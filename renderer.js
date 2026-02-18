@@ -259,6 +259,17 @@ const installUpdateBtn = document.getElementById('installUpdateBtn');
 const checkUpdateBtn = document.getElementById('checkUpdateBtn');
 const restartBtn = document.getElementById('restartBtn');
 
+// Logs kopieren Button
+const copyLogsBtn = document.getElementById('copyLogsBtn');
+copyLogsBtn.addEventListener('click', () => {
+  const entries = logArea.querySelectorAll('.log-entry');
+  const text = Array.from(entries).map(e => e.textContent).join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    copyLogsBtn.textContent = 'Kopiert!';
+    setTimeout(() => { copyLogsBtn.textContent = 'Logs kopieren'; }, 2000);
+  });
+});
+
 // Restart Button
 restartBtn.addEventListener('click', () => {
   addLog('App wird neu gestartet...');

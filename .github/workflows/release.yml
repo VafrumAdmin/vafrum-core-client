@@ -22,6 +22,18 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Download go2rtc
+        run: |
+          curl -L -o go2rtc_win64.zip https://github.com/AlexxIT/go2rtc/releases/download/v1.9.14/go2rtc_win64.zip
+          Expand-Archive -Path go2rtc_win64.zip -DestinationPath . -Force
+          Remove-Item go2rtc_win64.zip
+          if (Test-Path go2rtc.exe) { Write-Host "go2rtc.exe OK" } else { throw "go2rtc.exe fehlt!" }
+
+      - name: Download cloudflared
+        run: |
+          curl -L -o cloudflared.exe https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
+          if (Test-Path cloudflared.exe) { Write-Host "cloudflared.exe OK" } else { throw "cloudflared.exe fehlt!" }
+
       - name: Install dependencies
         run: npm ci
 
