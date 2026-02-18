@@ -23,6 +23,7 @@ let go2rtcReady = false;
 let cameraUrls = new Map();
 let cameraStreams = new Map(); // Alle Kamera-Streams für go2rtc
 let go2rtcRestartTimer = null; // Debounce für go2rtc Neustart
+let go2rtcIntentionalKill = false; // Verhindert Watchdog-Restart bei absichtlichem Kill
 let localIp = 'localhost';
 
 // Hardcoded API URL für Endnutzer
@@ -1222,6 +1223,13 @@ if(src){
     go2rtcProcess = null;
     go2rtcReady = false;
 
+    // Nicht neu starten wenn absichtlich gekillt (restartGo2rtcWithAllStreams)
+    if (go2rtcIntentionalKill) {
+      go2rtcIntentionalKill = false;
+      sendLog('go2rtc absichtlich beendet - kein Watchdog-Restart');
+      return;
+    }
+
     // Nur neu starten wenn App noch läuft
     if (!app.isQuitting) {
       sendLog('go2rtc Neustart in 3s...');
@@ -1386,8 +1394,13 @@ function restartGo2rtcWithAllStreams() {
     streamsConfig += `  ${name}: "${url}"\n`;
   });
 
+  // static_dir für stream.html (Kamera-Ansicht im Frontend)
+  const wwwDir = path.join(app.getPath('userData'), 'www');
   const configContent = `api:
   listen: "127.0.0.1:1984"
+  static_dir: "${wwwDir.replace(/\\/g, '/')}"
+rtsp:
+  listen: ""
 streams:
 ${streamsConfig}`;
 
@@ -1395,7 +1408,8 @@ ${streamsConfig}`;
     fs.writeFileSync(go2rtcConfigPath, configContent);
     sendLog('go2rtc Config geschrieben mit ' + cameraStreams.size + ' Streams');
 
-    // Alten Prozess beenden
+    // Alten Prozess absichtlich beenden (Watchdog soll NICHT neu starten)
+    go2rtcIntentionalKill = true;
     if (go2rtcProcess) {
       go2rtcProcess.kill();
       go2rtcProcess = null;
