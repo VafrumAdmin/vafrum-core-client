@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss: http://localhost:* http://127.0.0.1:*; img-src 'self' data: blob: http://127.0.0.1:*">
+  <title>Vafrum Core</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Update Banner -->
+  <div id="updateBanner" class="update-banner hidden">
+    <span id="updateText">Update verfügbar</span>
+    <div class="update-actions">
+      <span id="updateProgress" class="update-progress hidden">0%</span>
+      <button id="installUpdateBtn" class="btn btn-small btn-success hidden">Jetzt installieren</button>
+    </div>
+  </div>
+
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <h1>Vafrum Core</h1>
+      <div class="header-right">
+        <button id="restartBtn" class="btn btn-small btn-warning">Neustart</button>
+        <button id="checkUpdateBtn" class="btn btn-small btn-secondary">Updates prüfen</button>
+        <span id="appVersion" class="app-version"></span>
+        <div class="status-indicator" id="statusIndicator">
+          <span class="status-dot"></span>
+          <span class="status-text">Getrennt</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Connection Panel -->
+    <section class="panel connection-panel">
+      <h2>API Verbindung</h2>
+      <div class="form-group">
+        <label for="apiKey">API Key</label>
+        <input type="password" id="apiKey" placeholder="vfk_...">
+      </div>
+      <div class="button-row">
+        <button id="connectBtn" class="btn btn-primary">Verbinden</button>
+        <button id="disconnectBtn" class="btn btn-secondary" disabled>Trennen</button>
+      </div>
+    </section>
+
+    <!-- Printers Panel -->
+    <section class="panel printers-panel">
+      <h2>Drucker</h2>
+      <div id="printersList" class="printers-list">
+        <div class="empty-state">Keine Drucker verbunden</div>
+      </div>
+    </section>
+
+    <!-- Log Panel -->
+    <section class="panel log-panel">
+      <h2>Log</h2>
+      <div id="logArea" class="log-area"></div>
+    </section>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

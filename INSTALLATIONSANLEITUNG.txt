@@ -1,0 +1,78 @@
+============================================================
+       VAFRUM CORE - Installationsanleitung
+============================================================
+
+Vafrum Core verbindet Ihre Bambu Lab 3D-Drucker mit der
+Vafrum Cloud-Plattform. So koennen Sie Ihre Drucker von
+ueberall ueberwachen und steuern.
+
+------------------------------------------------------------
+  VORAUSSETZUNGEN
+------------------------------------------------------------
+
+- Windows 10 oder neuer (64-Bit)
+- Bambu Lab Drucker im lokalen Netzwerk
+- Vafrum-Account mit API Key (erhalten Sie von Ihrem Admin)
+
+------------------------------------------------------------
+  INSTALLATION
+------------------------------------------------------------
+
+1. Starten Sie "VafrumCore-Setup-1.0.0.exe"
+
+2. Folgen Sie dem Installationsassistenten
+   (Sie koennen den Installationsordner frei waehlen)
+
+3. Nach der Installation startet Vafrum Core automatisch
+
+------------------------------------------------------------
+  EINRICHTUNG
+------------------------------------------------------------
+
+1. Geben Sie Ihren API Key ein (beginnt mit "vfk_...")
+   -> Den API Key erhalten Sie von Ihrem Vafrum-Administrator
+
+2. Klicken Sie auf "Verbinden"
+
+3. Ihre Drucker erscheinen automatisch in der Liste
+
+Das war's! Vafrum Core laeuft im Hintergrund und:
+- Verbindet sich automatisch beim Windows-Start
+- Stellt Kamera-Streams bereit
+- Leitet Druckerbefehle weiter
+- Aktualisiert sich automatisch
+
+------------------------------------------------------------
+  HAEUFIGE FRAGEN
+------------------------------------------------------------
+
+F: Wo bekomme ich meinen API Key?
+A: Ihr Vafrum-Administrator erstellt einen API Key fuer Sie
+   unter https://vafrum-core.de im Admin-Bereich.
+
+F: Meine Drucker erscheinen nicht?
+A: Stellen Sie sicher, dass die Drucker eingeschaltet und
+   im selben Netzwerk wie dieser PC sind. Die Drucker
+   muessen in Ihrem Vafrum-Account konfiguriert sein.
+
+F: Wie aktualisiere ich die App?
+A: Updates werden automatisch heruntergeladen. Sie sehen
+   einen gruenen Banner oben in der App wenn ein Update
+   bereit ist. Klicken Sie auf "Jetzt installieren".
+
+F: Kann ich die App auf mehreren PCs installieren?
+A: Ja, aber pro Standort/Netzwerk reicht eine Installation.
+   Die Bridge muss im selben Netzwerk wie die Drucker sein.
+
+F: Die App zeigt "Auth Fehler"?
+A: Pruefen Sie ob der API Key korrekt ist. Kopieren Sie
+   ihn erneut aus dem Vafrum Admin-Bereich.
+
+------------------------------------------------------------
+  SUPPORT
+------------------------------------------------------------
+
+Bei Problemen wenden Sie sich an Ihren Vafrum-Administrator
+oder schreiben Sie an: info@vafrum.de
+
+============================================================
