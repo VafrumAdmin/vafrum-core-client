@@ -45,6 +45,7 @@ jobs:
 
       - name: Create Windows ZIP
         run: |
+          Copy-Item INSTALLATIONSANLEITUNG.txt dist/win-unpacked/
           Compress-Archive -Path dist/win-unpacked/* -DestinationPath dist/VafrumCore-Windows-x64.zip
           Write-Host "Windows ZIP erstellt"
 
@@ -108,11 +109,13 @@ jobs:
           cd dist
           # x64 Build
           if [ -d "mac" ]; then
-            cd mac && zip -r ../VafrumCore-macOS-x64.zip "Vafrum Core.app" && cd ..
+            cp ../INSTALLATIONSANLEITUNG.txt mac/
+            cd mac && zip -r ../VafrumCore-macOS-x64.zip "Vafrum Core.app" INSTALLATIONSANLEITUNG.txt && cd ..
           fi
           # arm64 Build
           if [ -d "mac-arm64" ]; then
-            cd mac-arm64 && zip -r ../VafrumCore-macOS-arm64.zip "Vafrum Core.app" && cd ..
+            cp ../INSTALLATIONSANLEITUNG.txt mac-arm64/
+            cd mac-arm64 && zip -r ../VafrumCore-macOS-arm64.zip "Vafrum Core.app" INSTALLATIONSANLEITUNG.txt && cd ..
           fi
 
       - name: Upload macOS artifacts
@@ -155,6 +158,7 @@ jobs:
 
       - name: Create Linux ZIP
         run: |
+          cp INSTALLATIONSANLEITUNG.txt dist/linux-unpacked/
           cd dist/linux-unpacked
           zip -r ../VafrumCore-Linux-x64.zip .
           cd ../..
