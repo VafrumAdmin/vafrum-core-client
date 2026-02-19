@@ -1,0 +1,89 @@
+============================================================
+       VAFRUM CORE - Raspberry Pi / Linux Server
+============================================================
+
+Vafrum Core verbindet Ihre Bambu Lab 3D-Drucker mit der
+Vafrum Cloud-Plattform - ohne grafische Oberflaeche,
+ideal fuer Raspberry Pi oder Linux Server.
+
+------------------------------------------------------------
+  VORAUSSETZUNGEN
+------------------------------------------------------------
+
+- Raspberry Pi (3B+ oder neuer) oder Linux Server (64-Bit)
+- Node.js 18 oder neuer
+- Bambu Lab Drucker im lokalen Netzwerk
+- Vafrum-Account mit API Key
+
+Node.js installieren (falls noch nicht vorhanden):
+  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -
+  sudo apt install -y nodejs
+
+------------------------------------------------------------
+  SCHNELLSTART
+------------------------------------------------------------
+
+1. Archiv entpacken:
+   tar -xzf VafrumCore-RaspberryPi.tar.gz
+   cd VafrumCore-RaspberryPi
+
+2. Startskript ausfuehren:
+   chmod +x start.sh
+   ./start.sh
+
+3. Beim ersten Start werden Sie nach dem API Key gefragt.
+   Den API Key erhalten Sie von Ihrem Vafrum-Administrator.
+
+Das war's! Die Bridge laeuft und verbindet Ihre Drucker.
+
+------------------------------------------------------------
+  ALS SERVICE INSTALLIEREN (empfohlen)
+------------------------------------------------------------
+
+Damit die Bridge automatisch beim Hochfahren startet:
+
+  sudo ./install-service.sh
+
+Danach laeuft Vafrum Core als Hintergrund-Service und
+startet automatisch bei jedem Neustart des Pi.
+
+Nuetzliche Befehle:
+  sudo systemctl status vafrum-core    (Status anzeigen)
+  sudo journalctl -u vafrum-core -f    (Live-Logs)
+  sudo systemctl restart vafrum-core   (Neustarten)
+
+------------------------------------------------------------
+  KONFIGURATION
+------------------------------------------------------------
+
+Die Konfiguration liegt in config.json:
+  { "apiKey": "vfk_..." }
+
+Nach Aenderungen an der Config:
+  sudo systemctl restart vafrum-core
+
+------------------------------------------------------------
+  HAEUFIGE FRAGEN
+------------------------------------------------------------
+
+F: Welchen Raspberry Pi brauche ich?
+A: Mindestens Pi 3B+ (64-Bit). Pi 4 oder Pi 5 empfohlen.
+
+F: Wieviel RAM braucht die Bridge?
+A: Ca. 50-80 MB RAM. Deutlich weniger als die Desktop-Version.
+
+F: Meine Drucker erscheinen nicht?
+A: Stellen Sie sicher, dass die Drucker eingeschaltet und
+   im selben Netzwerk wie der Pi sind.
+
+F: Kamera-Streams funktionieren nicht?
+A: go2rtc und cloudflared muessen im gleichen Ordner liegen.
+   Pruefen Sie die Logs: sudo journalctl -u vafrum-core -f
+
+------------------------------------------------------------
+  SUPPORT
+------------------------------------------------------------
+
+Bei Problemen: info@vafrum.de
+
+============================================================

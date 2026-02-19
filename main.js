@@ -29,6 +29,14 @@ let localIp = 'localhost';
 // Hardcoded API URL für Endnutzer
 const API_URL = 'https://vafrum-core.de';
 
+// Plattform-spezifische Binary-Namen
+const IS_WIN = process.platform === 'win32';
+const IS_MAC = process.platform === 'darwin';
+const BIN_EXT = IS_WIN ? '.exe' : '';
+const GO2RTC_BIN = 'go2rtc' + BIN_EXT;
+const CLOUDFLARED_BIN = 'cloudflared' + BIN_EXT;
+const SPAWN_OPTS = IS_WIN ? { windowsHide: true } : {};
+
 // === Auto-Reconnect & Resilience ===
 let tunnelRestartAttempts = 0;
 let tunnelRestartTimer = null;
@@ -1211,10 +1219,10 @@ function isA1P1Model(model) {
 function startGo2rtc() {
   const portableDir = process.env.PORTABLE_EXECUTABLE_DIR || process.cwd();
   const locations = [
-    path.join(process.resourcesPath || '', 'go2rtc.exe'),
-    path.join(portableDir, 'go2rtc.exe'),
-    path.join(path.dirname(process.execPath), 'go2rtc.exe'),
-    path.join(__dirname, 'go2rtc.exe')
+    path.join(process.resourcesPath || '', GO2RTC_BIN),
+    path.join(portableDir, GO2RTC_BIN),
+    path.join(path.dirname(process.execPath), GO2RTC_BIN),
+    path.join(__dirname, GO2RTC_BIN)
   ];
 
   let go2rtcPath = null;
@@ -1223,7 +1231,7 @@ function startGo2rtc() {
   }
 
   if (!go2rtcPath) {
-    setTimeout(() => sendLog('go2rtc.exe nicht gefunden! Geprüft: ' + locations.join(', ')), 2000);
+    setTimeout(() => sendLog(GO2RTC_BIN + ' nicht gefunden! Geprüft: ' + locations.join(', ')), 2000);
     return;
   }
 
@@ -1268,7 +1276,7 @@ if(src){
 </body></html>`);
   fs.writeFileSync(configFile, 'api:\n  listen: "127.0.0.1:1984"\n  static_dir: "' + wwwDir.replace(/\\/g, '/') + '"\nrtsp:\n  listen: ""\nstreams: {}\n');
 
-  go2rtcProcess = spawn(go2rtcPath, ['-c', configFile], { stdio: 'ignore', windowsHide: true, cwd: app.getPath('userData') });
+  go2rtcProcess = spawn(go2rtcPath, ['-c', configFile], { stdio: 'ignore', ...SPAWN_OPTS, cwd: app.getPath('userData') });
   go2rtcProcess.on('error', (e) => sendLog('go2rtc Fehler: ' + e.message));
 
   // Watchdog: go2rtc bei Crash automatisch neu starten
@@ -1318,10 +1326,10 @@ if(src){
 
 function startTunnel() {
   const locations = [
-    path.join(process.resourcesPath, 'cloudflared.exe'),
-    path.join(process.env.PORTABLE_EXECUTABLE_DIR || '', 'cloudflared.exe'),
-    path.join(path.dirname(process.execPath), 'cloudflared.exe'),
-    path.join(__dirname, 'cloudflared.exe')
+    path.join(process.resourcesPath || '', CLOUDFLARED_BIN),
+    path.join(process.env.PORTABLE_EXECUTABLE_DIR || '', CLOUDFLARED_BIN),
+    path.join(path.dirname(process.execPath), CLOUDFLARED_BIN),
+    path.join(__dirname, CLOUDFLARED_BIN)
   ];
 
   let cfPath = null;
@@ -1330,12 +1338,12 @@ function startTunnel() {
   }
 
   if (!cfPath) {
-    sendLog('cloudflared.exe nicht gefunden');
+    sendLog(CLOUDFLARED_BIN + ' nicht gefunden');
     return;
   }
 
   sendLog('Starte Tunnel...');
-  tunnelProcess = spawn(cfPath, ['tunnel', '--url', 'http://localhost:' + MJPEG_PORT], { windowsHide: true });
+  tunnelProcess = spawn(cfPath, ['tunnel', '--url', 'http://localhost:' + MJPEG_PORT], SPAWN_OPTS);
 
   tunnelProcess.stderr.on('data', (data) => {
     const output = data.toString();
@@ -1492,10 +1500,10 @@ ${streamsConfig}`;
 
 function startGo2rtcWithConfig(go2rtcConfigPath) {
   const locations = [
-    path.join(process.resourcesPath, 'go2rtc.exe'),
-    path.join(process.env.PORTABLE_EXECUTABLE_DIR || '', 'go2rtc.exe'),
-    path.join(path.dirname(process.execPath), 'go2rtc.exe'),
-    path.join(__dirname, 'go2rtc.exe')
+    path.join(process.resourcesPath || '', GO2RTC_BIN),
+    path.join(process.env.PORTABLE_EXECUTABLE_DIR || '', GO2RTC_BIN),
+    path.join(path.dirname(process.execPath), GO2RTC_BIN),
+    path.join(__dirname, GO2RTC_BIN)
   ];
 
   let go2rtcPath = null;
@@ -1505,7 +1513,7 @@ function startGo2rtcWithConfig(go2rtcConfigPath) {
 
   if (!go2rtcPath) return;
 
-  go2rtcProcess = spawn(go2rtcPath, ['-c', go2rtcConfigPath], { stdio: 'pipe', windowsHide: true, cwd: app.getPath('userData') });
+  go2rtcProcess = spawn(go2rtcPath, ['-c', go2rtcConfigPath], { stdio: 'pipe', ...SPAWN_OPTS, cwd: app.getPath('userData') });
   go2rtcProcess.stdout.on('data', (data) => {
     const msg = data.toString().trim();
     if (msg) sendLog('go2rtc: ' + msg.substring(0, 200));
@@ -1549,13 +1557,15 @@ app.whenReady().then(() => {
   startGo2rtc();      // go2rtc für X1/H2D
   createWindow();
 
-  // Auto-Start bei Windows-Login (kein UAC-Dialog)
-  app.setLoginItemSettings({
-    openAtLogin: true,
-    path: process.execPath,
-    args: ['--autostart']
-  });
-  sendLog('Auto-Start bei Windows-Login aktiviert');
+  // Auto-Start bei System-Login
+  if (IS_WIN || IS_MAC) {
+    app.setLoginItemSettings({
+      openAtLogin: true,
+      path: process.execPath,
+      args: ['--autostart']
+    });
+    sendLog('Auto-Start bei Login aktiviert');
+  }
 
   // Auto-Updater Setup
   autoUpdater.autoDownload = true;

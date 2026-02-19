@@ -5,3 +5,5 @@ dist/
 Thumbs.db
 go2rtc.exe
 cloudflared.exe
+binaries/
+release/

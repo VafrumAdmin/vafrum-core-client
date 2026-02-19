@@ -9,9 +9,9 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  # === Windows Build ===
+  build-windows:
     runs-on: windows-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,22 +22,214 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Download go2rtc
+      - name: Download go2rtc (Windows)
         run: |
+          New-Item -Path binaries/win-x64 -ItemType Directory -Force
           curl -L -o go2rtc_win64.zip https://github.com/AlexxIT/go2rtc/releases/download/v1.9.14/go2rtc_win64.zip
-          Expand-Archive -Path go2rtc_win64.zip -DestinationPath . -Force
+          Expand-Archive -Path go2rtc_win64.zip -DestinationPath binaries/win-x64 -Force
           Remove-Item go2rtc_win64.zip
-          if (Test-Path go2rtc.exe) { Write-Host "go2rtc.exe OK" } else { throw "go2rtc.exe fehlt!" }
+          if (Test-Path binaries/win-x64/go2rtc.exe) { Write-Host "go2rtc.exe OK" } else { throw "go2rtc.exe fehlt!" }
 
-      - name: Download cloudflared
+      - name: Download cloudflared (Windows)
         run: |
-          curl -L -o cloudflared.exe https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
-          if (Test-Path cloudflared.exe) { Write-Host "cloudflared.exe OK" } else { throw "cloudflared.exe fehlt!" }
+          curl -L -o binaries/win-x64/cloudflared.exe https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe
+          if (Test-Path binaries/win-x64/cloudflared.exe) { Write-Host "cloudflared.exe OK" } else { throw "cloudflared.exe fehlt!" }
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and Release
+      - name: Build Windows
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build -- --publish always
+
+      - name: Create Windows ZIP
+        run: |
+          Compress-Archive -Path dist/win-unpacked/* -DestinationPath dist/VafrumCore-Windows-x64.zip
+          Write-Host "Windows ZIP erstellt"
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            dist/VafrumCore-Setup-*.exe
+            dist/VafrumCore-Windows-x64.zip
+
+  # === macOS Build ===
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Download go2rtc (macOS x64)
+        run: |
+          mkdir -p binaries/mac-x64
+          curl -L -o go2rtc_mac_amd64.zip https://github.com/AlexxIT/go2rtc/releases/download/v1.9.14/go2rtc_mac_amd64.zip
+          unzip -o go2rtc_mac_amd64.zip -d binaries/mac-x64/
+          rm go2rtc_mac_amd64.zip
+          chmod +x binaries/mac-x64/go2rtc
+
+      - name: Download go2rtc (macOS arm64)
+        run: |
+          mkdir -p binaries/mac-arm64
+          curl -L -o go2rtc_mac_arm64.zip https://github.com/AlexxIT/go2rtc/releases/download/v1.9.14/go2rtc_mac_arm64.zip
+          unzip -o go2rtc_mac_arm64.zip -d binaries/mac-arm64/
+          rm go2rtc_mac_arm64.zip
+          chmod +x binaries/mac-arm64/go2rtc
+
+      - name: Download cloudflared (macOS)
+        run: |
+          # x64
+          curl -L -o cloudflared-darwin-amd64.tgz https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64.tgz
+          tar -xzf cloudflared-darwin-amd64.tgz -C binaries/mac-x64/
+          rm cloudflared-darwin-amd64.tgz
+          chmod +x binaries/mac-x64/cloudflared
+          # arm64 - use amd64 binary (works via Rosetta 2)
+          cp binaries/mac-x64/cloudflared binaries/mac-arm64/cloudflared
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build macOS (x64 + arm64)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --mac --publish never
+
+      - name: Create macOS ZIPs
+        run: |
+          cd dist
+          # x64 Build
+          if [ -d "mac" ]; then
+            cd mac && zip -r ../VafrumCore-macOS-x64.zip "Vafrum Core.app" && cd ..
+          fi
+          # arm64 Build
+          if [ -d "mac-arm64" ]; then
+            cd mac-arm64 && zip -r ../VafrumCore-macOS-arm64.zip "Vafrum Core.app" && cd ..
+          fi
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: dist/VafrumCore-macOS-*.zip
+
+  # === Linux Build ===
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Download go2rtc (Linux x64)
+        run: |
+          mkdir -p binaries/linux-x64
+          curl -L -o binaries/linux-x64/go2rtc https://github.com/AlexxIT/go2rtc/releases/download/v1.9.14/go2rtc_linux_amd64
+          chmod +x binaries/linux-x64/go2rtc
+
+      - name: Download cloudflared (Linux x64)
+        run: |
+          curl -L -o binaries/linux-x64/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x binaries/linux-x64/cloudflared
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --linux --publish never
+
+      - name: Create Linux ZIP
+        run: |
+          cd dist/linux-unpacked
+          zip -r ../VafrumCore-Linux-x64.zip .
+          cd ../..
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-build
+          path: dist/VafrumCore-Linux-x64.zip
+
+  # === Raspberry Pi (Headless) ===
+  build-raspberry-pi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Prepare Raspberry Pi package
+        run: |
+          mkdir -p VafrumCore-RaspberryPi
+
+          # App-Dateien kopieren
+          cp main-headless.js VafrumCore-RaspberryPi/
+          cp package-headless.json VafrumCore-RaspberryPi/package.json
+          cp start.sh VafrumCore-RaspberryPi/
+          cp install-service.sh VafrumCore-RaspberryPi/
+          cp ANLEITUNG-RASPBERRY-PI.txt VafrumCore-RaspberryPi/
+          chmod +x VafrumCore-RaspberryPi/start.sh
+          chmod +x VafrumCore-RaspberryPi/install-service.sh
+
+          # go2rtc arm64 downloaden
+          curl -L -o VafrumCore-RaspberryPi/go2rtc https://github.com/AlexxIT/go2rtc/releases/download/v1.9.14/go2rtc_linux_arm64
+          chmod +x VafrumCore-RaspberryPi/go2rtc
+
+          # cloudflared arm64 downloaden
+          curl -L -o VafrumCore-RaspberryPi/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64
+          chmod +x VafrumCore-RaspberryPi/cloudflared
+
+          # Dependencies installieren (für arm64)
+          cd VafrumCore-RaspberryPi
+          npm install --production
+          cd ..
+
+          # ZIP erstellen
+          zip -r VafrumCore-RaspberryPi.zip VafrumCore-RaspberryPi/
+
+      - name: Upload Raspberry Pi artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: raspberry-pi-build
+          path: VafrumCore-RaspberryPi.zip
+
+  # === Release erstellen ===
+  create-release:
+    needs: [build-windows, build-macos, build-linux, build-raspberry-pi]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/windows-build/*
+            artifacts/macos-build/*
+            artifacts/linux-build/*
+            artifacts/raspberry-pi-build/*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

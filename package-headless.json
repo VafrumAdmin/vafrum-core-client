@@ -1,0 +1,15 @@
+{
+  "name": "vafrum-core-headless",
+  "version": "1.0.3",
+  "description": "Vafrum Core - Headless Bridge für Raspberry Pi und Linux Server",
+  "author": "Vafrum <info@vafrum.de>",
+  "main": "main-headless.js",
+  "scripts": {
+    "start": "node main-headless.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mqtt": "^5.15.0",
+    "socket.io-client": "^4.8.3"
+  }
+}
