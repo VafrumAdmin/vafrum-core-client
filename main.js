@@ -936,36 +936,47 @@ function startMjpegServer() {
     req.pipe(proxyReq);
   });
 
-  // stream.html Proxy zu go2rtc
+  // Custom stream.html direkt ausliefern (NICHT von go2rtc proxied!)
+  // go2rtc liefert video-stream.js über seine eingebauten Dateien aus
   expressApp.get('/stream.html', (req, res) => {
     const qs = require('url').parse(req.url).search || '';
     sendLog('[go2rtc-proxy] stream.html angefragt: ' + qs);
-    const proxyReq = http.request({
-      hostname: '127.0.0.1', port: 1984,
-      path: '/stream.html' + qs, method: 'GET', headers: req.headers
-    }, (proxyRes) => {
-      sendLog('[go2rtc-proxy] stream.html Antwort: ' + proxyRes.statusCode);
-      res.writeHead(proxyRes.statusCode, proxyRes.headers);
-      proxyRes.pipe(res);
-    });
-    proxyReq.on('error', (e) => {
-      sendLog('[go2rtc-proxy] stream.html FEHLER: ' + e.message);
-      res.status(502).send('go2rtc nicht erreichbar');
-    });
-    proxyReq.end();
+    res.setHeader('Content-Type', 'text/html');
+    res.send(`<!DOCTYPE html>
+<html><head><style>
+*{margin:0;padding:0}html,body{width:100%;height:100%;overflow:hidden;background:#000;display:flex}
+video-stream{display:block;width:100%!important;height:100%!important;flex:1 1 100%!important}
+video{width:100%!important;height:100%!important;object-fit:contain!important;display:block!important}
+</style><script type="module" src="video-stream.js"></script>
+</head><body><script>
+var p=new URLSearchParams(location.search);var src=p.get('src');
+if(src){function init(){
+var v=document.createElement('video-stream');
+v.src=new URL('api/ws?src='+src,location.href).href;
+v.style.cssText='width:100%;height:100%';document.body.appendChild(v);
+var obs=new MutationObserver(function(){
+var h=document.querySelector('header');if(h)h.remove();
+var vid=document.querySelector('video');if(vid){vid.controls=false;obs.disconnect();}
+});obs.observe(document.body,{childList:true,subtree:true});
+}if(customElements.get('video-stream'))init();
+else customElements.whenDefined('video-stream').then(init);}
+</script></body></html>`);
   });
 
-  // Static files Proxy zu go2rtc (video-stream.js, video-rtc.js etc.)
-  // Alle go2rtc Static-Files durchleiten, nicht nur video-stream.js
+  // Static files Proxy zu go2rtc (video-stream.js etc.)
+  // go2rtc liefert seine eingebauten JS-Dateien aus (kein static_dir mehr!)
   expressApp.get(['/video-stream.js', '/video-rtc.js', '/webrtc.html'], (req, res) => {
+    sendLog('[go2rtc-proxy] Static-File angefragt: ' + req.url);
     const proxyReq = http.request({
       hostname: '127.0.0.1', port: 1984,
       path: req.url, method: 'GET', headers: req.headers
     }, (proxyRes) => {
+      sendLog('[go2rtc-proxy] Static-File Antwort: ' + proxyRes.statusCode + ' für ' + req.url);
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
       proxyRes.pipe(res);
     });
     proxyReq.on('error', (e) => {
+      sendLog('[go2rtc-proxy] Static-File FEHLER: ' + e.message);
       res.status(502).send('go2rtc nicht erreichbar');
     });
     proxyReq.end();
@@ -1247,43 +1258,9 @@ function startGo2rtc() {
   sendLog('go2rtc gefunden: ' + go2rtcPath);
 
   // Config in userData schreiben (dort haben wir Schreibrechte)
+  // KEIN static_dir! Damit go2rtc seine eingebauten JS-Dateien (video-stream.js) ausliefert
   const configFile = path.join(app.getPath('userData'), 'go2rtc.yaml');
-  // Custom www-Ordner mit eigenem stream.html (ohne controls, volle Breite)
-  const wwwDir = path.join(app.getPath('userData'), 'www');
-  if (!fs.existsSync(wwwDir)) fs.mkdirSync(wwwDir, { recursive: true });
-  fs.writeFileSync(path.join(wwwDir, 'stream.html'), `<!DOCTYPE html>
-<html><head><style>
-*{margin:0;padding:0}
-html,body{width:100%;height:100%;overflow:hidden;background:#000;display:flex}
-header,nav{display:none!important}
-video-stream{display:block;width:100%!important;height:100%!important;flex:1 1 100%!important}
-video{width:100%!important;height:100%!important;object-fit:contain!important;display:block!important}
-</style>
-<script type="module" src="video-stream.js"></script>
-</head><body>
-<script>
-var p=new URLSearchParams(location.search);
-var src=p.get('src');
-if(src){
-  function init(){
-    var v=document.createElement('video-stream');
-    v.src=new URL('api/ws?src='+src,location.href).href;
-    v.style.cssText='width:100%;height:100%';
-    document.body.appendChild(v);
-    // Header/Nav entfernen + Controls aus
-    var obs=new MutationObserver(function(){
-      var h=document.querySelector('header');if(h)h.remove();
-      var vid=document.querySelector('video');
-      if(vid){vid.controls=false;obs.disconnect();}
-    });
-    obs.observe(document.body,{childList:true,subtree:true});
-  }
-  if(customElements.get('video-stream'))init();
-  else customElements.whenDefined('video-stream').then(init);
-}
-</script>
-</body></html>`);
-  fs.writeFileSync(configFile, 'api:\n  listen: "127.0.0.1:1984"\n  static_dir: "' + wwwDir.replace(/\\/g, '/') + '"\nrtsp:\n  listen: ""\nstreams: {}\n');
+  fs.writeFileSync(configFile, 'api:\n  listen: "127.0.0.1:1984"\nrtsp:\n  listen: ""\nstreams: {}\n');
 
   go2rtcProcess = spawn(go2rtcPath, ['-c', configFile], { stdio: 'ignore', ...SPAWN_OPTS, cwd: app.getPath('userData') });
   go2rtcProcess.on('error', (e) => sendLog('go2rtc Fehler: ' + e.message));
@@ -1469,11 +1446,9 @@ function restartGo2rtcWithAllStreams() {
     streamsConfig += `  ${name}: "${url}"\n`;
   });
 
-  // static_dir für stream.html (Kamera-Ansicht im Frontend)
-  const wwwDir = path.join(app.getPath('userData'), 'www');
+  // KEIN static_dir! Damit go2rtc seine eingebauten JS-Dateien ausliefert
   const configContent = `api:
   listen: "127.0.0.1:1984"
-  static_dir: "${wwwDir.replace(/\\/g, '/')}"
 rtsp:
   listen: ""
 streams:
