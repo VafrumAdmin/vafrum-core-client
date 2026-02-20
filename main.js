@@ -1534,6 +1534,16 @@ ipcMain.handle('restart-app', () => {
 });
 
 app.whenReady().then(() => {
+  // macOS: App in Programme-Ordner verschieben falls nötig (entfernt Quarantäne-Flag + Translocation)
+  if (IS_MAC && !app.isInApplicationsFolder()) {
+    try {
+      const moved = app.moveToApplicationsFolder();
+      if (moved) return; // App startet nach dem Move automatisch neu
+    } catch (e) {
+      // Fehlgeschlagen - trotzdem weitermachen
+    }
+  }
+
   configPath = path.join(app.getPath('userData'), 'config.json');
   localIp = getLocalIp();
   initLogging();      // Debug Logging initialisieren
