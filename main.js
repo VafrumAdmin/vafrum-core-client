@@ -917,13 +917,46 @@ function startMjpegServer() {
     res.send(stream.lastFrame);
   });
 
-  // Reverse-Proxy zu go2rtc (für X1/H2 RTSP Kameras + stream.html)
+  // Dedizierter MJPEG-Proxy für go2rtc Streams (H-Serie/X-Serie Kameras)
+  // Verwendet http.get mit sauberen Headers statt generischem Proxy
+  expressApp.get('/go2rtc-mjpeg/:name', (req, res) => {
+    const name = req.params.name;
+    const go2rtcUrl = 'http://127.0.0.1:1984/api/stream.mjpeg?src=' + encodeURIComponent(name);
+    sendLog('[go2rtc-mjpeg] Stream angefragt: ' + name);
+
+    const go2rtcReq = http.get(go2rtcUrl, (go2rtcRes) => {
+      sendLog('[go2rtc-mjpeg] go2rtc Status: ' + go2rtcRes.statusCode + ' Content-Type: ' + (go2rtcRes.headers['content-type'] || 'FEHLT'));
+      if (go2rtcRes.statusCode !== 200) {
+        res.status(go2rtcRes.statusCode).send('go2rtc Fehler');
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': go2rtcRes.headers['content-type'] || 'multipart/x-mixed-replace; boundary=frame',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Connection': 'keep-alive',
+        'Pragma': 'no-cache',
+      });
+      go2rtcRes.pipe(res);
+    });
+
+    go2rtcReq.on('error', (e) => {
+      sendLog('[go2rtc-mjpeg] FEHLER: ' + e.message);
+      if (!res.headersSent) res.status(502).send('go2rtc nicht erreichbar');
+    });
+
+    req.on('close', () => {
+      go2rtcReq.destroy();
+    });
+  });
+
+  // Reverse-Proxy zu go2rtc (für andere API-Calls wie /api/streams, /api/ws etc.)
   expressApp.use('/api', (req, res) => {
     const targetPath = '/api' + req.url;
     sendLog('[go2rtc-proxy] ' + req.method + ' ' + targetPath);
     const proxyReq = http.request({
       hostname: '127.0.0.1', port: 1984,
-      path: targetPath, method: req.method, headers: req.headers
+      path: targetPath, method: req.method,
+      headers: { ...req.headers, host: '127.0.0.1:1984' }
     }, (proxyRes) => {
       sendLog('[go2rtc-proxy] Antwort: ' + proxyRes.statusCode + ' für ' + targetPath);
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
@@ -931,55 +964,99 @@ function startMjpegServer() {
     });
     proxyReq.on('error', (e) => {
       sendLog('[go2rtc-proxy] FEHLER: ' + e.message + ' für ' + targetPath);
-      res.status(502).send('go2rtc nicht erreichbar');
+      if (!res.headersSent) res.status(502).send('go2rtc nicht erreichbar');
     });
     req.pipe(proxyReq);
   });
 
-  // Custom stream.html direkt ausliefern (NICHT von go2rtc proxied!)
-  // go2rtc liefert video-stream.js über seine eingebauten Dateien aus
+  // stream.html: Komplett eigenständiger MSE-Player (KEIN video-stream.js nötig!)
+  // Verbindet sich per WebSocket direkt mit go2rtc und spielt H264 via MediaSource Extensions
   expressApp.get('/stream.html', (req, res) => {
     const qs = require('url').parse(req.url).search || '';
-    sendLog('[go2rtc-proxy] stream.html angefragt: ' + qs);
+    sendLog('[stream.html] angefragt: ' + qs);
     res.setHeader('Content-Type', 'text/html');
     res.send(`<!DOCTYPE html>
 <html><head><style>
-*{margin:0;padding:0}html,body{width:100%;height:100%;overflow:hidden;background:#000;display:flex}
-video-stream{display:block;width:100%!important;height:100%!important;flex:1 1 100%!important}
-video{width:100%!important;height:100%!important;object-fit:contain!important;display:block!important}
-</style><script type="module" src="video-stream.js"></script>
-</head><body><script>
-var p=new URLSearchParams(location.search);var src=p.get('src');
-if(src){function init(){
-var v=document.createElement('video-stream');
-v.src=new URL('api/ws?src='+src,location.href).href;
-v.style.cssText='width:100%;height:100%';document.body.appendChild(v);
-var obs=new MutationObserver(function(){
-var h=document.querySelector('header');if(h)h.remove();
-var vid=document.querySelector('video');if(vid){vid.controls=false;obs.disconnect();}
-});obs.observe(document.body,{childList:true,subtree:true});
-}if(customElements.get('video-stream'))init();
-else customElements.whenDefined('video-stream').then(init);}
-</script></body></html>`);
-  });
+*{margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;display:flex;align-items:center;justify-content:center}
+video{width:100%;height:100%;object-fit:contain;display:block}
+</style></head>
+<body>
+<video id="v" autoplay playsinline muted></video>
+<script>
+var params=new URLSearchParams(location.search);
+var src=params.get('src');
+if(src){
+  var wsProto=location.protocol==='https:'?'wss:':'ws:';
+  var wsUrl=wsProto+'//'+location.host+'/api/ws?src='+src;
+  var video=document.getElementById('v');
+  var reconnectDelay=1000;
 
-  // Static files Proxy zu go2rtc (video-stream.js etc.)
-  // go2rtc liefert seine eingebauten JS-Dateien aus (kein static_dir mehr!)
-  expressApp.get(['/video-stream.js', '/video-rtc.js', '/webrtc.html'], (req, res) => {
-    sendLog('[go2rtc-proxy] Static-File angefragt: ' + req.url);
-    const proxyReq = http.request({
-      hostname: '127.0.0.1', port: 1984,
-      path: req.url, method: 'GET', headers: req.headers
-    }, (proxyRes) => {
-      sendLog('[go2rtc-proxy] Static-File Antwort: ' + proxyRes.statusCode + ' für ' + req.url);
-      res.writeHead(proxyRes.statusCode, proxyRes.headers);
-      proxyRes.pipe(res);
-    });
-    proxyReq.on('error', (e) => {
-      sendLog('[go2rtc-proxy] Static-File FEHLER: ' + e.message);
-      res.status(502).send('go2rtc nicht erreichbar');
-    });
-    proxyReq.end();
+  function startStream(){
+    var ws=new WebSocket(wsUrl);
+    ws.binaryType='arraybuffer';
+    var ms=null,sb=null,queue=[];
+
+    ws.onopen=function(){
+      ws.send(JSON.stringify({type:'mse'}));
+      reconnectDelay=1000;
+    };
+
+    ws.onmessage=function(ev){
+      if(typeof ev.data==='string'){
+        try{
+          var msg=JSON.parse(ev.data);
+          if(msg.type==='mse'){
+            ms=new MediaSource();
+            video.src=URL.createObjectURL(ms);
+            ms.addEventListener('sourceopen',function(){
+              try{
+                sb=ms.addSourceBuffer(msg.value);
+                sb.mode='segments';
+                sb.addEventListener('updateend',function(){
+                  if(queue.length>0&&!sb.updating){
+                    try{sb.appendBuffer(queue.shift());}catch(e){}
+                  }
+                });
+              }catch(e){}
+            });
+          }
+        }catch(e){}
+      }else{
+        if(sb){
+          if(sb.updating||queue.length>0){
+            queue.push(ev.data);
+            // Buffer-Limit: max 100 Frames in Queue (verhindert Memory-Leak)
+            while(queue.length>100)queue.shift();
+          }else{
+            try{sb.appendBuffer(ev.data);}catch(e){queue.push(ev.data);}
+          }
+          // Latenz-Fix: Wenn Video zu weit hinterher, zur Live-Kante springen
+          if(video.buffered.length>0){
+            var end=video.buffered.end(video.buffered.length-1);
+            if(end-video.currentTime>2){video.currentTime=end-0.5;}
+          }
+        }
+      }
+    };
+
+    ws.onclose=function(){
+      sb=null;ms=null;queue=[];
+      setTimeout(startStream,reconnectDelay);
+      reconnectDelay=Math.min(reconnectDelay*1.5,10000);
+    };
+    ws.onerror=function(){};
+  }
+
+  startStream();
+  video.play().catch(function(){});
+  // Klick = Unmute + Play
+  document.body.addEventListener('click',function(){
+    video.muted=false;video.play().catch(function(){});
+  });
+}
+</script>
+</body></html>`);
   });
 
   mjpegServer = expressApp.listen(MJPEG_PORT, '127.0.0.1', () => {
@@ -1085,30 +1162,8 @@ function startJpegStream(serial, accessCode, ip) {
 }
 
 function addMjpegToGo2rtc(streamName, mjpegUrl) {
-  const apiUrl = 'http://127.0.0.1:1984/api/streams?name=' + encodeURIComponent(streamName) + '&src=' + encodeURIComponent(mjpegUrl);
-
-  const req = http.request(apiUrl, { method: 'PUT' }, (res) => {
-    res.on('data', () => {});
-    res.on('end', () => {
-      if (res.statusCode === 200) {
-        sendLog('MJPEG Stream zu go2rtc hinzugefügt: ' + streamName);
-      } else {
-        sendLog('go2rtc MJPEG Status: ' + res.statusCode);
-        cameraStreams.set(streamName, mjpegUrl);
-        if (go2rtcRestartTimer) clearTimeout(go2rtcRestartTimer);
-        go2rtcRestartTimer = setTimeout(() => restartGo2rtcWithAllStreams(), 2000);
-      }
-    });
-  });
-
-  req.on('error', (e) => {
-    sendLog('go2rtc MJPEG Fehler: ' + e.message);
-    cameraStreams.set(streamName, mjpegUrl);
-    if (go2rtcRestartTimer) clearTimeout(go2rtcRestartTimer);
-    go2rtcRestartTimer = setTimeout(() => restartGo2rtcWithAllStreams(), 2000);
-  });
-
-  req.end();
+  cameraStreams.set(streamName, mjpegUrl);
+  addStreamToGo2rtc(streamName, mjpegUrl, 0);
 }
 
 function connectJpegStream(serial, accessCode, ip, streamData) {
@@ -1237,6 +1292,18 @@ function isA1P1Model(model) {
 }
 
 function startGo2rtc() {
+  // Erstmal alle alten go2rtc-Prozesse killen (Orphans von vorherigem App-Crash/Kill)
+  try {
+    if (IS_WIN) {
+      require('child_process').execSync('taskkill /IM go2rtc.exe /F 2>NUL', { stdio: 'ignore', timeout: 3000 });
+    } else {
+      require('child_process').execSync('killall go2rtc 2>/dev/null', { stdio: 'ignore', timeout: 3000 });
+    }
+    sendLog('Alte go2rtc-Prozesse beendet');
+  } catch (e) {
+    // Kein alter Prozess - OK
+  }
+
   const portableDir = process.env.PORTABLE_EXECUTABLE_DIR || process.cwd();
   const locations = [
     path.join(process.resourcesPath || '', GO2RTC_BIN),
@@ -1262,7 +1329,15 @@ function startGo2rtc() {
   const configFile = path.join(app.getPath('userData'), 'go2rtc.yaml');
   fs.writeFileSync(configFile, 'api:\n  listen: "127.0.0.1:1984"\nrtsp:\n  listen: ""\nstreams: {}\n');
 
-  go2rtcProcess = spawn(go2rtcPath, ['-c', configFile], { stdio: 'ignore', ...SPAWN_OPTS, cwd: app.getPath('userData') });
+  go2rtcProcess = spawn(go2rtcPath, ['-c', configFile], { stdio: 'pipe', ...SPAWN_OPTS, cwd: app.getPath('userData') });
+  go2rtcProcess.stdout.on('data', (data) => {
+    const msg = data.toString().trim();
+    if (msg) sendLog('go2rtc: ' + msg.substring(0, 200));
+  });
+  go2rtcProcess.stderr.on('data', (data) => {
+    const msg = data.toString().trim();
+    if (msg) sendLog('go2rtc: ' + msg.substring(0, 200));
+  });
   go2rtcProcess.on('error', (e) => sendLog('go2rtc Fehler: ' + e.message));
 
   // Watchdog: go2rtc bei Crash automatisch neu starten
@@ -1290,7 +1365,7 @@ function startGo2rtc() {
 
   setTimeout(() => {
     go2rtcReady = true;
-    sendLog('go2rtc gestartet');
+    sendLog('go2rtc gestartet und bereit');
 
     // Pending Streams hinzufügen
     if (pendingStreams.length > 0) {
@@ -1307,7 +1382,7 @@ function startGo2rtc() {
 
     // Auto-start tunnel
     startTunnel();
-  }, 2000);
+  }, 3000);
 }
 
 function startTunnel() {
@@ -1347,7 +1422,7 @@ function startTunnel() {
         const isA1 = isA1P1Model(printer.model);
         const mjpegUrl = isA1
           ? config.tunnelUrl + '/stream/' + serial
-          : config.tunnelUrl + '/api/stream.mjpeg?src=cam_' + serial;
+          : config.tunnelUrl + '/go2rtc-mjpeg/cam_' + serial;
         cameraUrls.set(serial, mjpegUrl);
         sendLog('URL aktualisiert: ' + serial + ' -> ' + mjpegUrl);
 
@@ -1406,13 +1481,21 @@ function addCameraStream(serial, accessCode, ip, model) {
   // Stream zur Map hinzufügen
   cameraStreams.set(streamName, streamUrl);
 
-  // URL sofort setzen (unabhängig vom API-Erfolg) - geht über Reverse-Proxy auf Port 8765
+  // URL sofort setzen - dedizierter MJPEG-Proxy Endpoint (nicht über generischen /api Proxy)
   const baseUrl = config.tunnelUrl || ('http://' + localIp + ':' + MJPEG_PORT);
-  const mjpegUrl = baseUrl + '/api/stream.mjpeg?src=' + streamName;
+  const mjpegUrl = baseUrl + '/go2rtc-mjpeg/' + streamName;
   cameraUrls.set(serial, mjpegUrl);
   sendLog('Stream URL gesetzt: ' + streamName + ' -> ' + mjpegUrl);
 
-  // Stream via API hinzufügen (ohne Neustart)
+  // Stream direkt über Config-Restart hinzufügen (PUT API gibt 400 bei go2rtc v1.9+)
+  if (go2rtcRestartTimer) clearTimeout(go2rtcRestartTimer);
+  go2rtcRestartTimer = setTimeout(() => restartGo2rtcWithAllStreams(), 2000);
+  sendLog('RTSP Stream wird per Config-Restart hinzugefügt (in 2s)');
+}
+
+// Stream per PUT API zu go2rtc hinzufügen - mit Retry (max 3 Versuche, 3s Delay)
+function addStreamToGo2rtc(streamName, streamUrl, attempt) {
+  const maxRetries = 3;
   const go2rtcApiUrl = 'http://127.0.0.1:1984/api/streams?name=' + encodeURIComponent(streamName) + '&src=' + encodeURIComponent(streamUrl);
 
   const req = http.request(go2rtcApiUrl, { method: 'PUT' }, (res) => {
@@ -1421,23 +1504,71 @@ function addCameraStream(serial, accessCode, ip, model) {
       if (res.statusCode === 200) {
         sendLog('Stream via API hinzugefügt: ' + streamName);
       } else {
-        sendLog('Stream API Status: ' + res.statusCode + ', nutze Fallback');
-        if (go2rtcRestartTimer) clearTimeout(go2rtcRestartTimer);
-        go2rtcRestartTimer = setTimeout(() => restartGo2rtcWithAllStreams(), 2000);
+        sendLog('Stream API Status: ' + res.statusCode + ' für ' + streamName + ' (Versuch ' + (attempt + 1) + '/' + maxRetries + ')');
+        if (attempt + 1 < maxRetries) {
+          // Retry nach 3s
+          setTimeout(() => addStreamToGo2rtc(streamName, streamUrl, attempt + 1), 3000);
+        } else {
+          sendLog('Alle Retries fehlgeschlagen für ' + streamName + ', starte go2rtc neu');
+          if (go2rtcRestartTimer) clearTimeout(go2rtcRestartTimer);
+          go2rtcRestartTimer = setTimeout(() => restartGo2rtcWithAllStreams(), 2000);
+        }
       }
     });
   });
 
   req.on('error', (e) => {
-    sendLog('Stream API Fehler: ' + e.message + ', nutze Fallback');
-    if (go2rtcRestartTimer) clearTimeout(go2rtcRestartTimer);
-    go2rtcRestartTimer = setTimeout(() => restartGo2rtcWithAllStreams(), 2000);
+    sendLog('Stream API Fehler: ' + e.message + ' für ' + streamName + ' (Versuch ' + (attempt + 1) + '/' + maxRetries + ')');
+    if (attempt + 1 < maxRetries) {
+      setTimeout(() => addStreamToGo2rtc(streamName, streamUrl, attempt + 1), 3000);
+    } else {
+      sendLog('Alle Retries fehlgeschlagen für ' + streamName + ', starte go2rtc neu');
+      if (go2rtcRestartTimer) clearTimeout(go2rtcRestartTimer);
+      go2rtcRestartTimer = setTimeout(() => restartGo2rtcWithAllStreams(), 2000);
+    }
   });
 
   req.end();
 }
 
+// Prüft ob Port frei ist (polling mit maxWait)
+function waitForPortFree(port, maxWait, callback) {
+  const net = require('net');
+  const startTime = Date.now();
+
+  function check() {
+    const server = net.createServer();
+    server.once('error', () => {
+      // Port noch belegt
+      if (Date.now() - startTime < maxWait) {
+        setTimeout(check, 500);
+      } else {
+        sendLog('Port ' + port + ' nach ' + Math.round(maxWait / 1000) + 's immer noch belegt!');
+        callback(false);
+      }
+    });
+    server.once('listening', () => {
+      server.close(() => {
+        sendLog('Port ' + port + ' ist frei');
+        callback(true);
+      });
+    });
+    server.listen(port, '127.0.0.1');
+  }
+
+  check();
+}
+
 function restartGo2rtcWithAllStreams() {
+  // Auch orphaned go2rtc killen bevor Neustart
+  try {
+    if (IS_WIN) {
+      require('child_process').execSync('taskkill /IM go2rtc.exe /F 2>NUL', { stdio: 'ignore', timeout: 3000 });
+    } else {
+      require('child_process').execSync('killall go2rtc 2>/dev/null', { stdio: 'ignore', timeout: 3000 });
+    }
+  } catch (e) {}
+
   const go2rtcConfigPath = path.join(path.dirname(configPath), 'go2rtc.yaml');
 
   // Alle Streams in die Config schreiben
@@ -1460,23 +1591,27 @@ ${streamsConfig}`;
 
     // Alten Prozess absichtlich beenden (Watchdog soll NICHT neu starten)
     go2rtcIntentionalKill = true;
+    go2rtcReady = false;
     if (go2rtcProcess) {
       go2rtcProcess.kill();
       go2rtcProcess = null;
     }
 
-    // Kurz warten bis Port frei ist, dann neu starten
-    setTimeout(() => {
+    // Warten bis Port 1984 tatsächlich frei ist (max 10s), dann neu starten
+    waitForPortFree(1984, 10000, (portFree) => {
+      if (!portFree) {
+        sendLog('WARNUNG: Port 1984 erzwungen - versuche trotzdem...');
+      }
       startGo2rtcWithConfig(go2rtcConfigPath);
       // URLs für X1/H2 Streams aktualisieren (A1/P1 haben eigene direkte URLs)
       const baseUrl = config.tunnelUrl || ('http://' + localIp + ':' + MJPEG_PORT);
       cameraStreams.forEach((url, name) => {
         const serialFromName = name.replace('cam_', '');
-        const mjpegUrl = baseUrl + '/api/stream.mjpeg?src=' + name;
+        const mjpegUrl = baseUrl + '/go2rtc-mjpeg/' + name;
         cameraUrls.set(serialFromName, mjpegUrl);
       });
       sendLog('Kamera URLs aktualisiert für ' + cameraStreams.size + ' Streams');
-    }, 500);
+    });
   } catch (e) {
     sendLog('Kamera Config Fehler: ' + e.message);
   }
@@ -1507,7 +1642,30 @@ function startGo2rtcWithConfig(go2rtcConfigPath) {
     if (msg) sendLog('go2rtc: ' + msg.substring(0, 200));
   });
   go2rtcProcess.on('error', (e) => sendLog('go2rtc Fehler: ' + e.message));
-  sendLog('go2rtc neu gestartet');
+  go2rtcProcess.on('close', (code) => {
+    sendLog('go2rtc (config) beendet (Code: ' + code + ')');
+    go2rtcProcess = null;
+    go2rtcReady = false;
+
+    if (go2rtcIntentionalKill) {
+      go2rtcIntentionalKill = false;
+      return;
+    }
+
+    // Watchdog-Restart
+    if (!app.isQuitting) {
+      sendLog('go2rtc Neustart (config) in 3s...');
+      go2rtcWatchdogTimer = setTimeout(() => {
+        go2rtcWatchdogTimer = null;
+        startGo2rtc();
+      }, 3000);
+    }
+  });
+  // go2rtc ready nach 2s (API braucht kurz)
+  setTimeout(() => {
+    go2rtcReady = true;
+    sendLog('go2rtc neu gestartet und bereit');
+  }, 2000);
 }
 
 // Version-Handler
