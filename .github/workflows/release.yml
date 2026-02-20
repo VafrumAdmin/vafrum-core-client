@@ -118,21 +118,6 @@ jobs:
             fi
           done
 
-      - name: Ad-hoc sign macOS apps
-        run: |
-          # x64 Build signieren
-          if [ -d "dist/mac" ]; then
-            echo "Signing x64 app..."
-            codesign --force --deep --sign - "dist/mac/Vafrum Core.app"
-            echo "x64 signed OK"
-          fi
-          # arm64 Build signieren
-          if [ -d "dist/mac-arm64" ]; then
-            echo "Signing arm64 app..."
-            codesign --force --deep --sign - "dist/mac-arm64/Vafrum Core.app"
-            echo "arm64 signed OK"
-          fi
-
       - name: Create macOS ZIPs
         run: |
           cd dist

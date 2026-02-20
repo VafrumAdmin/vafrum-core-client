@@ -1763,6 +1763,10 @@ app.whenReady().then(() => {
   // Auto-Updater Setup
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  // Auf macOS Code-Signatur-Validierung deaktivieren (keine Apple Developer ID)
+  if (process.platform === 'darwin') {
+    autoUpdater.verifyUpdateCodeSignature = () => Promise.resolve(null);
+  }
   let downloadedVersion = null;
 
   autoUpdater.on('checking-for-update', () => {
