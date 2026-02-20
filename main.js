@@ -1063,6 +1063,27 @@ if(src){
     sendLog('Kombinierter Server gestartet auf 127.0.0.1:' + MJPEG_PORT);
   });
 
+  // WebSocket-Proxy zu go2rtc (für stream.html → /api/ws?src=...)
+  mjpegServer.on('upgrade', (req, socket, head) => {
+    if (req.url.startsWith('/api/')) {
+      const net = require('net');
+      const proxy = net.connect({ port: 1984, host: '127.0.0.1' }, () => {
+        let rawReq = req.method + ' ' + req.url + ' HTTP/' + req.httpVersion + '\r\n';
+        for (let i = 0; i < req.rawHeaders.length; i += 2) {
+          rawReq += req.rawHeaders[i] + ': ' + req.rawHeaders[i + 1] + '\r\n';
+        }
+        rawReq += '\r\n';
+        proxy.write(rawReq);
+        if (head.length > 0) proxy.write(head);
+        socket.pipe(proxy).pipe(socket);
+      });
+      proxy.on('error', () => socket.destroy());
+      socket.on('error', () => proxy.destroy());
+    } else {
+      socket.destroy();
+    }
+  });
+
   // WebSocket Proxy zu go2rtc (für video-stream Komponente)
   mjpegServer.on('upgrade', (req, socket, head) => {
     sendLog('[go2rtc-ws] WebSocket Upgrade: ' + req.url);
@@ -1418,13 +1439,13 @@ function startTunnel() {
       }
       // Update camera URLs
       printers.forEach((printer, serial) => {
-        // A1/P1: direkt MJPEG, X1/H2: über go2rtc Proxy
+        // A1/P1: direkt MJPEG, X1/H2: stream.html für WebRTC/MSE
         const isA1 = isA1P1Model(printer.model);
-        const mjpegUrl = isA1
+        const camUrl = isA1
           ? config.tunnelUrl + '/stream/' + serial
-          : config.tunnelUrl + '/go2rtc-mjpeg/cam_' + serial;
-        cameraUrls.set(serial, mjpegUrl);
-        sendLog('URL aktualisiert: ' + serial + ' -> ' + mjpegUrl);
+          : config.tunnelUrl + '/stream.html?src=cam_' + serial;
+        cameraUrls.set(serial, camUrl);
+        sendLog('URL aktualisiert: ' + serial + ' -> ' + camUrl);
 
         // Status mit neuer URL an API senden
         if (apiSocket?.connected) {
@@ -1481,11 +1502,11 @@ function addCameraStream(serial, accessCode, ip, model) {
   // Stream zur Map hinzufügen
   cameraStreams.set(streamName, streamUrl);
 
-  // URL sofort setzen - dedizierter MJPEG-Proxy Endpoint (nicht über generischen /api Proxy)
+  // URL sofort setzen - stream.html für WebRTC/MSE (go2rtc kann H264 NICHT als MJPEG liefern!)
   const baseUrl = config.tunnelUrl || ('http://' + localIp + ':' + MJPEG_PORT);
-  const mjpegUrl = baseUrl + '/go2rtc-mjpeg/' + streamName;
-  cameraUrls.set(serial, mjpegUrl);
-  sendLog('Stream URL gesetzt: ' + streamName + ' -> ' + mjpegUrl);
+  const streamHtmlUrl = baseUrl + '/stream.html?src=' + streamName;
+  cameraUrls.set(serial, streamHtmlUrl);
+  sendLog('Stream URL gesetzt: ' + streamName + ' -> ' + streamHtmlUrl);
 
   // Stream direkt über Config-Restart hinzufügen (PUT API gibt 400 bei go2rtc v1.9+)
   if (go2rtcRestartTimer) clearTimeout(go2rtcRestartTimer);
@@ -1603,12 +1624,12 @@ ${streamsConfig}`;
         sendLog('WARNUNG: Port 1984 erzwungen - versuche trotzdem...');
       }
       startGo2rtcWithConfig(go2rtcConfigPath);
-      // URLs für X1/H2 Streams aktualisieren (A1/P1 haben eigene direkte URLs)
+      // URLs für X1/H2 Streams aktualisieren - stream.html für WebRTC/MSE
       const baseUrl = config.tunnelUrl || ('http://' + localIp + ':' + MJPEG_PORT);
       cameraStreams.forEach((url, name) => {
         const serialFromName = name.replace('cam_', '');
-        const mjpegUrl = baseUrl + '/go2rtc-mjpeg/' + name;
-        cameraUrls.set(serialFromName, mjpegUrl);
+        const streamHtmlUrl = baseUrl + '/stream.html?src=' + name;
+        cameraUrls.set(serialFromName, streamHtmlUrl);
       });
       sendLog('Kamera URLs aktualisiert für ' + cameraStreams.size + ' Streams');
     });
