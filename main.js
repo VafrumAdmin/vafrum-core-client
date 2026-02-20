@@ -948,8 +948,9 @@ function startMjpegServer() {
     proxyReq.end();
   });
 
-  // Static files Proxy zu go2rtc (video-stream.js etc.)
-  expressApp.get('/video-stream.js', (req, res) => {
+  // Static files Proxy zu go2rtc (video-stream.js, video-rtc.js etc.)
+  // Alle go2rtc Static-Files durchleiten, nicht nur video-stream.js
+  expressApp.get(['/video-stream.js', '/video-rtc.js', '/webrtc.html'], (req, res) => {
     const proxyReq = http.request({
       hostname: '127.0.0.1', port: 1984,
       path: req.url, method: 'GET', headers: req.headers
