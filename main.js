@@ -1795,7 +1795,11 @@ app.whenReady().then(() => {
 
   autoUpdater.on('error', (err) => {
     // Nur einmal loggen, nicht spammen
-    if (!err._logged) { sendLog('Update Fehler: ' + err.message); err._logged = true; }
+    if (!err._logged) {
+      sendLog('Update Fehler: ' + err.message);
+      sendLog('Update Fehler Details: ' + (err.stack || 'kein Stack'));
+      err._logged = true;
+    }
   });
 
   setTimeout(() => {

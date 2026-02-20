@@ -136,15 +136,15 @@ jobs:
       - name: Create macOS ZIPs
         run: |
           cd dist
-          # x64 Build
+          # x64 Build - ditto bewahrt Symlinks, xattr und Code-Signatur
           if [ -d "mac" ]; then
-            cp ../INSTALLATIONSANLEITUNG.txt mac/
-            cd mac && zip -r ../VafrumCore-macOS-x64.zip "Vafrum Core.app" INSTALLATIONSANLEITUNG.txt && cd ..
+            ditto -c -k --sequesterRsrc --keepParent "mac/Vafrum Core.app" VafrumCore-macOS-x64.zip
+            echo "x64 ZIP erstellt ($(du -h VafrumCore-macOS-x64.zip | cut -f1))"
           fi
           # arm64 Build
           if [ -d "mac-arm64" ]; then
-            cp ../INSTALLATIONSANLEITUNG.txt mac-arm64/
-            cd mac-arm64 && zip -r ../VafrumCore-macOS-arm64.zip "Vafrum Core.app" INSTALLATIONSANLEITUNG.txt && cd ..
+            ditto -c -k --sequesterRsrc --keepParent "mac-arm64/Vafrum Core.app" VafrumCore-macOS-arm64.zip
+            echo "arm64 ZIP erstellt ($(du -h VafrumCore-macOS-arm64.zip | cut -f1))"
           fi
 
       - name: Generate latest-mac.yml for auto-updater
