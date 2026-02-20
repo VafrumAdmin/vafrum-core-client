@@ -919,14 +919,18 @@ function startMjpegServer() {
 
   // Reverse-Proxy zu go2rtc (für X1/H2 RTSP Kameras + stream.html)
   expressApp.use('/api', (req, res) => {
+    const targetPath = '/api' + req.url;
+    sendLog('[go2rtc-proxy] ' + req.method + ' ' + targetPath);
     const proxyReq = http.request({
       hostname: '127.0.0.1', port: 1984,
-      path: '/api' + req.url, method: req.method, headers: req.headers
+      path: targetPath, method: req.method, headers: req.headers
     }, (proxyRes) => {
+      sendLog('[go2rtc-proxy] Antwort: ' + proxyRes.statusCode + ' für ' + targetPath);
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
       proxyRes.pipe(res);
     });
     proxyReq.on('error', (e) => {
+      sendLog('[go2rtc-proxy] FEHLER: ' + e.message + ' für ' + targetPath);
       res.status(502).send('go2rtc nicht erreichbar');
     });
     req.pipe(proxyReq);
@@ -935,14 +939,17 @@ function startMjpegServer() {
   // stream.html Proxy zu go2rtc
   expressApp.get('/stream.html', (req, res) => {
     const qs = require('url').parse(req.url).search || '';
+    sendLog('[go2rtc-proxy] stream.html angefragt: ' + qs);
     const proxyReq = http.request({
       hostname: '127.0.0.1', port: 1984,
       path: '/stream.html' + qs, method: 'GET', headers: req.headers
     }, (proxyRes) => {
+      sendLog('[go2rtc-proxy] stream.html Antwort: ' + proxyRes.statusCode);
       res.writeHead(proxyRes.statusCode, proxyRes.headers);
       proxyRes.pipe(res);
     });
     proxyReq.on('error', (e) => {
+      sendLog('[go2rtc-proxy] stream.html FEHLER: ' + e.message);
       res.status(502).send('go2rtc nicht erreichbar');
     });
     proxyReq.end();
@@ -970,6 +977,7 @@ function startMjpegServer() {
 
   // WebSocket Proxy zu go2rtc (für video-stream Komponente)
   mjpegServer.on('upgrade', (req, socket, head) => {
+    sendLog('[go2rtc-ws] WebSocket Upgrade: ' + req.url);
     const proxySocket = net.connect(1984, '127.0.0.1', () => {
       // HTTP Upgrade Request an go2rtc weiterleiten
       let reqStr = req.method + ' ' + req.url + ' HTTP/1.1\r\n';
@@ -1568,61 +1576,54 @@ app.whenReady().then(() => {
     sendLog('Auto-Start bei Login aktiviert');
   }
 
-  // Auto-Updater Setup
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
-  let downloadedVersion = null; // Track which version is downloaded
+  // Auto-Updater Setup - nur auf Windows (macOS braucht Signierung für Auto-Update)
+  if (process.platform === 'win32') {
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    let downloadedVersion = null;
 
-  autoUpdater.on('checking-for-update', () => {
-    sendLog('Suche nach Updates...');
-  });
+    autoUpdater.on('checking-for-update', () => {
+      sendLog('Suche nach Updates...');
+    });
 
-  autoUpdater.on('update-available', (info) => {
-    sendLog('Update verfügbar: v' + info.version);
-    if (downloadedVersion && downloadedVersion !== info.version) {
-      sendLog('Neue Version verfügbar - lade v' + info.version + ' (verwerfe v' + downloadedVersion + ')');
-      downloadedVersion = null;
-      if (mainWindow) mainWindow.webContents.send('update-reset');
-    }
-    if (mainWindow) mainWindow.webContents.send('update-available', info.version);
-  });
+    autoUpdater.on('update-available', (info) => {
+      sendLog('Update verfügbar: v' + info.version);
+      if (downloadedVersion && downloadedVersion !== info.version) {
+        downloadedVersion = null;
+        if (mainWindow) mainWindow.webContents.send('update-reset');
+      }
+      if (mainWindow) mainWindow.webContents.send('update-available', info.version);
+    });
 
-  autoUpdater.on('update-not-available', () => {
-    sendLog('Bereits auf neuestem Stand');
-  });
+    autoUpdater.on('update-not-available', () => {
+      sendLog('Bereits auf neuestem Stand');
+    });
 
-  autoUpdater.on('download-progress', (progress) => {
-    const percent = Math.round(progress.percent);
-    if (mainWindow) mainWindow.webContents.send('update-progress', percent);
-  });
+    autoUpdater.on('download-progress', (progress) => {
+      const percent = Math.round(progress.percent);
+      if (mainWindow) mainWindow.webContents.send('update-progress', percent);
+    });
 
-  autoUpdater.on('update-downloaded', (info) => {
-    downloadedVersion = info.version;
-    sendLog('Update v' + info.version + ' bereit zur Installation');
-    if (mainWindow) {
-      mainWindow.webContents.send('update-downloaded', info.version);
-    }
-  });
+    autoUpdater.on('update-downloaded', (info) => {
+      downloadedVersion = info.version;
+      sendLog('Update v' + info.version + ' bereit zur Installation');
+      if (mainWindow) mainWindow.webContents.send('update-downloaded', info.version);
+    });
 
-  autoUpdater.on('error', (err) => {
-    // ENOENT = app-update.yml fehlt (macOS App Translocation oder fehlende Datei) → still ignorieren
-    if (err.message && err.message.includes('ENOENT')) {
-      sendLog('Auto-Update nicht verfügbar (App nicht im Programme-Ordner?)');
-    } else {
+    autoUpdater.on('error', (err) => {
       sendLog('Update Fehler: ' + err.message);
-    }
-  });
+    });
 
-  // Nach 5 Sekunden nach Updates suchen
-  setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(e => sendLog('Update-Check fehlgeschlagen: ' + e.message));
-  }, 5000);
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch(e => sendLog('Update-Check fehlgeschlagen: ' + e.message));
+    }, 5000);
 
-  // Alle 5 Minuten automatisch nach Updates suchen
-  setInterval(() => {
-    sendLog('Automatischer Update-Check...');
-    autoUpdater.checkForUpdates().catch(e => sendLog('Auto-Update-Check fehlgeschlagen: ' + e.message));
-  }, 5 * 60 * 1000);
+    setInterval(() => {
+      autoUpdater.checkForUpdates().catch(e => sendLog('Auto-Update-Check fehlgeschlagen: ' + e.message));
+    }, 5 * 60 * 1000);
+  } else {
+    sendLog('Auto-Update deaktiviert (nur Windows unterstützt)');
+  }
 });
 
 app.on('window-all-closed', () => {
