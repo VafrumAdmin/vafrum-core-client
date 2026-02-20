@@ -13,6 +13,7 @@ let mainWindow;
 let tunnelProcess = null;
 let mqttClients = new Map();
 let apiSocket = null;
+let lastDownloadedFile = null;
 let printers = new Map();
 let config = { apiKey: '', tunnelUrl: '' };
 let configPath = '';
@@ -1724,51 +1725,44 @@ ipcMain.handle('install-update', () => {
 
   if (process.platform === 'darwin') {
     try {
-      // macOS: Manuelles Update per Shell-Befehle (Squirrel/ShipIt umgehen)
-      const appBundle = path.resolve(path.dirname(app.getPath('exe')), '..', '..');
-      sendLog('App Bundle: ' + appBundle);
+      // macOS: Manuelles Update per Shell-Befehle (Squirrel/ShipIt komplett umgehen)
+      const currentBundle = path.resolve(path.dirname(app.getPath('exe')), '..', '..');
+      const appsDir = path.dirname(currentBundle);
+      const targetBundle = path.join(appsDir, 'Vafrum Core.app');
+      sendLog('Aktuelles Bundle: ' + currentBundle);
+      sendLog('Ziel: ' + targetBundle);
 
       // Heruntergeladene ZIP finden
       let zipPath = lastDownloadedFile;
       if (!zipPath || !fs.existsSync(zipPath)) {
-        // Fallback: Im Cache-Verzeichnis suchen
-        const cacheDir = path.join(os.homedir(), 'Library/Caches/com.vafrum.core.ShipIt');
-        sendLog('Suche ZIP in: ' + cacheDir);
-        if (fs.existsSync(cacheDir)) {
-          const findZip = (dir) => {
-            for (const item of fs.readdirSync(dir)) {
-              const full = path.join(dir, item);
-              if (item.endsWith('.zip')) return full;
-              try { if (fs.statSync(full).isDirectory()) { const r = findZip(full); if (r) return r; } } catch(e) {}
-            }
-            return null;
-          };
-          zipPath = findZip(cacheDir);
+        // Fallback: Im pending-Verzeichnis suchen
+        const pendingDir = path.join(os.homedir(), 'Library/Caches/vafrum-core-client/pending');
+        sendLog('Suche ZIP in: ' + pendingDir);
+        if (fs.existsSync(pendingDir)) {
+          const files = fs.readdirSync(pendingDir).filter(f => f.endsWith('.zip'));
+          if (files.length > 0) zipPath = path.join(pendingDir, files[0]);
         }
       }
 
       if (!zipPath || !fs.existsSync(zipPath)) {
-        sendLog('Fehler: Update-ZIP nicht gefunden. Versuche Standard-Methode...');
-        autoUpdater.quitAndInstall(false, true);
+        sendLog('Fehler: Update-ZIP nicht gefunden');
         return;
       }
 
       sendLog('Update-ZIP: ' + zipPath);
-      const tmpExtract = path.join(os.tmpdir(), 'vafrum-update-' + Date.now());
       const scriptPath = path.join(os.tmpdir(), 'vafrum-update.sh');
 
-      // Shell-Script: Wartet auf App-Ende, entpackt, ersetzt, startet neu
+      // Shell-Script: Wartet auf App-Ende, räumt alle alten Kopien auf, entpackt, startet
       fs.writeFileSync(scriptPath, [
         '#!/bin/bash',
         'sleep 2',
-        `mkdir -p "${tmpExtract}"`,
-        `ditto -x -k "${zipPath}" "${tmpExtract}"`,
-        `if [ ! -d "${tmpExtract}/Vafrum Core.app" ]; then echo "Fehler: App nicht im ZIP"; exit 1; fi`,
-        `rm -rf "${appBundle}"`,
-        `cp -R "${tmpExtract}/Vafrum Core.app" "${appBundle}"`,
-        `xattr -cr "${appBundle}"`,
-        `rm -rf "${tmpExtract}"`,
-        `open "${appBundle}"`,
+        '# Alle alten Vafrum Core Kopien entfernen',
+        `rm -rf "${appsDir}/Vafrum Core"*.app`,
+        '# ZIP entpacken nach Applications',
+        `ditto -x -k "${zipPath}" "${appsDir}/"`,
+        `if [ ! -d "${targetBundle}" ]; then echo "FEHLER: App nicht extrahiert"; exit 1; fi`,
+        `xattr -cr "${targetBundle}"`,
+        `open "${targetBundle}"`,
       ].join('\n'), { mode: 0o755 });
 
       sendLog('Update-Script erstellt, App wird beendet...');
@@ -1778,8 +1772,6 @@ ipcMain.handle('install-update', () => {
     } catch (err) {
       sendLog('macOS Install Fehler: ' + err.message);
       sendLog('Stack: ' + (err.stack || ''));
-      // Fallback
-      try { autoUpdater.quitAndInstall(false, true); } catch(e) {}
     }
     return;
   }
@@ -1832,7 +1824,6 @@ app.whenReady().then(() => {
     autoUpdater.verifyUpdateCodeSignature = () => Promise.resolve(null);
   }
   let downloadedVersion = null;
-  let lastDownloadedFile = null;
 
   autoUpdater.on('checking-for-update', () => {
     sendLog('Suche nach Updates...');
