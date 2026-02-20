@@ -1157,15 +1157,11 @@ function startJpegStream(serial, accessCode, ip) {
 
   connectJpegStream(serial, accessCode, ip, streamData);
 
-  // A1/P1: MJPEG über go2rtc Relay (go2rtc zieht von Express, relay als MJPEG)
+  // A1/P1: MJPEG direkt über den kombinierten Server (kein go2rtc-Umweg)
   const baseUrl = config.tunnelUrl || ('http://' + localIp + ':' + MJPEG_PORT);
-  const mjpegUrl = baseUrl + '/api/stream.mjpeg?src=cam_' + serial;
+  const mjpegUrl = baseUrl + '/stream/' + serial;
   cameraUrls.set(serial, mjpegUrl);
-  sendLog('A1/P1 Stream URL (go2rtc MJPEG): ' + mjpegUrl);
-
-  // In go2rtc registrieren: Express MJPEG als Quelle
-  const localMjpegUrl = 'http://127.0.0.1:' + MJPEG_PORT + '/stream/' + serial;
-  addMjpegToGo2rtc('cam_' + serial, localMjpegUrl);
+  sendLog('A1/P1 Stream URL (direkt): ' + mjpegUrl);
 }
 
 function addMjpegToGo2rtc(streamName, mjpegUrl) {
@@ -1425,10 +1421,10 @@ function startTunnel() {
       }
       // Update camera URLs
       printers.forEach((printer, serial) => {
-        // A1/P1: go2rtc MJPEG Relay, X1/H2: stream.html für WebRTC/MSE
+        // A1/P1: direkt MJPEG, X1/H2: stream.html für WebRTC/MSE
         const isA1 = isA1P1Model(printer.model);
         const camUrl = isA1
-          ? config.tunnelUrl + '/api/stream.mjpeg?src=cam_' + serial
+          ? config.tunnelUrl + '/stream/' + serial
           : config.tunnelUrl + '/stream.html?src=cam_' + serial;
         cameraUrls.set(serial, camUrl);
         sendLog('URL aktualisiert: ' + serial + ' -> ' + camUrl);
@@ -1610,15 +1606,12 @@ ${streamsConfig}`;
         sendLog('WARNUNG: Port 1984 erzwungen - versuche trotzdem...');
       }
       startGo2rtcWithConfig(go2rtcConfigPath);
-      // URLs aktualisieren: MJPEG-Quellen (A-Serie) → go2rtc MJPEG, RTSP-Quellen (H-Serie) → stream.html MSE
+      // URLs für X1/H2 Streams aktualisieren - stream.html für WebRTC/MSE
       const baseUrl = config.tunnelUrl || ('http://' + localIp + ':' + MJPEG_PORT);
       cameraStreams.forEach((url, name) => {
         const serialFromName = name.replace('cam_', '');
-        const isMjpegSource = url.startsWith('http');
-        const camUrl = isMjpegSource
-          ? baseUrl + '/api/stream.mjpeg?src=' + name
-          : baseUrl + '/stream.html?src=' + name;
-        cameraUrls.set(serialFromName, camUrl);
+        const streamHtmlUrl = baseUrl + '/stream.html?src=' + name;
+        cameraUrls.set(serialFromName, streamHtmlUrl);
       });
       sendLog('Kamera URLs aktualisiert für ' + cameraStreams.size + ' Streams');
     });
