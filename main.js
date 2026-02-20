@@ -1576,54 +1576,51 @@ app.whenReady().then(() => {
     sendLog('Auto-Start bei Login aktiviert');
   }
 
-  // Auto-Updater Setup - nur auf Windows (macOS braucht Signierung für Auto-Update)
-  if (process.platform === 'win32') {
-    autoUpdater.autoDownload = true;
-    autoUpdater.autoInstallOnAppQuit = true;
-    let downloadedVersion = null;
+  // Auto-Updater Setup
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  let downloadedVersion = null;
 
-    autoUpdater.on('checking-for-update', () => {
-      sendLog('Suche nach Updates...');
-    });
+  autoUpdater.on('checking-for-update', () => {
+    sendLog('Suche nach Updates...');
+  });
 
-    autoUpdater.on('update-available', (info) => {
-      sendLog('Update verfügbar: v' + info.version);
-      if (downloadedVersion && downloadedVersion !== info.version) {
-        downloadedVersion = null;
-        if (mainWindow) mainWindow.webContents.send('update-reset');
-      }
-      if (mainWindow) mainWindow.webContents.send('update-available', info.version);
-    });
+  autoUpdater.on('update-available', (info) => {
+    sendLog('Update verfügbar: v' + info.version);
+    if (downloadedVersion && downloadedVersion !== info.version) {
+      downloadedVersion = null;
+      if (mainWindow) mainWindow.webContents.send('update-reset');
+    }
+    if (mainWindow) mainWindow.webContents.send('update-available', info.version);
+  });
 
-    autoUpdater.on('update-not-available', () => {
-      sendLog('Bereits auf neuestem Stand');
-    });
+  autoUpdater.on('update-not-available', () => {
+    sendLog('Bereits auf neuestem Stand');
+  });
 
-    autoUpdater.on('download-progress', (progress) => {
-      const percent = Math.round(progress.percent);
-      if (mainWindow) mainWindow.webContents.send('update-progress', percent);
-    });
+  autoUpdater.on('download-progress', (progress) => {
+    const percent = Math.round(progress.percent);
+    if (mainWindow) mainWindow.webContents.send('update-progress', percent);
+  });
 
-    autoUpdater.on('update-downloaded', (info) => {
-      downloadedVersion = info.version;
-      sendLog('Update v' + info.version + ' bereit zur Installation');
-      if (mainWindow) mainWindow.webContents.send('update-downloaded', info.version);
-    });
+  autoUpdater.on('update-downloaded', (info) => {
+    downloadedVersion = info.version;
+    sendLog('Update v' + info.version + ' bereit zur Installation');
+    if (mainWindow) mainWindow.webContents.send('update-downloaded', info.version);
+  });
 
-    autoUpdater.on('error', (err) => {
-      sendLog('Update Fehler: ' + err.message);
-    });
+  autoUpdater.on('error', (err) => {
+    // Nur einmal loggen, nicht spammen
+    if (!err._logged) { sendLog('Update Fehler: ' + err.message); err._logged = true; }
+  });
 
-    setTimeout(() => {
-      autoUpdater.checkForUpdates().catch(e => sendLog('Update-Check fehlgeschlagen: ' + e.message));
-    }, 5000);
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 5000);
 
-    setInterval(() => {
-      autoUpdater.checkForUpdates().catch(e => sendLog('Auto-Update-Check fehlgeschlagen: ' + e.message));
-    }, 5 * 60 * 1000);
-  } else {
-    sendLog('Auto-Update deaktiviert (nur Windows unterstützt)');
-  }
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch(() => {});
+  }, 5 * 60 * 1000);
 });
 
 app.on('window-all-closed', () => {
