@@ -73,12 +73,16 @@ function addLog(msg, type = '') {
   const time = new Date().toLocaleTimeString('de-DE');
   entry.textContent = `[${time}] ${msg}`;
   logArea.appendChild(entry);
-  logArea.scrollTop = logArea.scrollHeight;
 
-  // Keep only last 100 entries
-  while (logArea.children.length > 100) {
+  // Keep only last 200 entries
+  while (logArea.children.length > 200) {
     logArea.removeChild(logArea.firstChild);
   }
+
+  // Auto-Scroll zum Ende
+  requestAnimationFrame(() => {
+    logArea.scrollTop = logArea.scrollHeight;
+  });
 }
 
 function renderPrinters() {

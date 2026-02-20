@@ -52,8 +52,8 @@ const MJPEG_PORT = 8765;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 900,
-    height: 700,
+    width: 1100,
+    height: 850,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
