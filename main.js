@@ -37,6 +37,39 @@ const GO2RTC_BIN = 'go2rtc' + BIN_EXT;
 const CLOUDFLARED_BIN = 'cloudflared' + BIN_EXT;
 const SPAWN_OPTS = IS_WIN ? { windowsHide: true } : {};
 
+// === StreamManager: Druckertyp und Plattform sind ZWEI getrennte Dimensionen ===
+// Druckertyp → Protokoll, Port, URL-Format
+// Plattform  → TLS-Konfiguration
+// Diese zwei Dinge werden NICHT vermischt.
+
+// Gruppe 1: Standard JPEG über TLS Port 6000 (A-Serie + P1-Serie)
+const STREAM_GROUP_1 = ['A1', 'A1 MINI', 'P1P', 'P1S'];
+// Gruppe 2: RTSPS H264 über Port 322 via go2rtc (H-Serie + X-Serie + P2S)
+const STREAM_GROUP_2 = ['H2D', 'H2', 'H2C', 'H2S', 'X1', 'X1C', 'X1E', 'P2S'];
+
+// Druckertyp → Stream-Gruppe (1 oder 2)
+function getStreamGroup(model) {
+  if (!model) return 1;
+  const m = model.toUpperCase();
+  for (const g2 of STREAM_GROUP_2) {
+    if (m.includes(g2)) return 2;
+  }
+  return 1; // Default: Gruppe 1
+}
+
+// Druckertyp → Stream-Konfiguration
+function getStreamConfig(model) {
+  if (getStreamGroup(model) === 2) {
+    return { group: 2, type: 'rtsps', port: 322, urlFormat: 'stream.html' };
+  }
+  return { group: 1, type: 'mjpeg', port: 6000, urlFormat: 'stream' };
+}
+
+// Plattform → TLS-Konfiguration (identisch auf allen Plattformen)
+function getPlatformTLSConfig() {
+  return { rejectUnauthorized: false };
+}
+
 // === Auto-Reconnect & Resilience ===
 let tunnelRestartAttempts = 0;
 let tunnelRestartTimer = null;
@@ -1104,13 +1137,13 @@ function sendJpegFrame(res, frameData) {
 }
 
 // A1/P1 JPEG Stream über TLS Port 6000
-function startJpegStream(serial, accessCode, ip) {
+function startJpegStream(serial, accessCode, ip, tlsConfig) {
   if (jpegStreams.has(serial)) {
     sendLog('JPEG Stream bereits aktiv: ' + serial);
     return;
   }
 
-  sendLog('Starte JPEG Stream für A1/P1: ' + serial + ' (' + ip + ')');
+  sendLog('Starte JPEG Stream für Gruppe 1: ' + serial + ' (' + ip + ')');
 
   const streamData = {
     socket: null,
@@ -1121,7 +1154,8 @@ function startJpegStream(serial, accessCode, ip) {
     buffer: Buffer.alloc(0),
     watchdogTimer: null,
     accessCode: accessCode,
-    ip: ip
+    ip: ip,
+    tlsConfig: tlsConfig || getPlatformTLSConfig()
   };
   jpegStreams.set(serial, streamData);
 
@@ -1170,10 +1204,11 @@ function addMjpegToGo2rtc(streamName, mjpegUrl) {
 }
 
 function connectJpegStream(serial, accessCode, ip, streamData) {
+  const tlsConfig = streamData.tlsConfig || getPlatformTLSConfig();
   const options = {
     host: ip,
     port: 6000,
-    rejectUnauthorized: false
+    ...tlsConfig
   };
 
   streamData.connectTime = Date.now();
@@ -1287,11 +1322,9 @@ function stopJpegStream(serial) {
   }
 }
 
-// Prüfen ob Drucker A1/P1 Serie ist (kein RTSP)
+// DEPRECATED: Nutze getStreamGroup(model) === 1 stattdessen
 function isA1P1Model(model) {
-  if (!model) return false;
-  const m = model.toUpperCase();
-  return m.includes('A1') || m.includes('P1');
+  return getStreamGroup(model) === 1;
 }
 
 function startGo2rtc() {
@@ -1419,11 +1452,10 @@ function startTunnel() {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('config-loaded', config);
       }
-      // Update camera URLs
+      // Update camera URLs (basierend auf Stream-Gruppe des Druckertyps)
       printers.forEach((printer, serial) => {
-        // A1/P1: direkt MJPEG, X1/H2: stream.html für WebRTC/MSE
-        const isA1 = isA1P1Model(printer.model);
-        const camUrl = isA1
+        const group = getStreamGroup(printer.model);
+        const camUrl = group === 1
           ? config.tunnelUrl + '/stream/' + serial
           : config.tunnelUrl + '/stream.html?src=cam_' + serial;
         cameraUrls.set(serial, camUrl);
@@ -1459,17 +1491,23 @@ function startTunnel() {
   });
 }
 
+// === StreamManager: Zentraler Einstiegspunkt ===
+// 1. getStreamConfig(model)       → Druckertyp (Protokoll, Port, URL-Format)
+// 2. getPlatformTLSConfig()       → Plattform (TLS-Einstellungen)
+// 3. startStream kombiniert beides
 function addCameraStream(serial, accessCode, ip, model) {
-  sendLog('Kamera-Setup für: ' + serial + ' (Modell: ' + (model || 'unbekannt') + ')');
+  const streamCfg = getStreamConfig(model);
+  const tlsConfig = getPlatformTLSConfig();
 
-  // A1/P1 nutzen JPEG Streaming auf Port 6000
-  if (isA1P1Model(model)) {
-    sendLog('A1/P1 erkannt - nutze JPEG Streaming auf Port 6000');
-    startJpegStream(serial, accessCode, ip);
+  sendLog('Kamera-Setup: ' + serial + ' (Modell: ' + (model || 'unbekannt') + ', Gruppe: ' + streamCfg.group + ', Typ: ' + streamCfg.type + ')');
+
+  if (streamCfg.group === 1) {
+    // Gruppe 1: JPEG über TLS Port 6000 → Express MJPEG direkt
+    startJpegStream(serial, accessCode, ip, tlsConfig);
     return;
   }
 
-  // X1/H2D nutzen RTSP auf Port 322 via go2rtc
+  // Gruppe 2: RTSPS Port 322 via go2rtc → MSE Player
   if (!go2rtcReady) {
     sendLog('go2rtc nicht bereit, Stream ' + serial + ' wird in Warteschlange gestellt');
     pendingStreams.push({ serial, accessCode, ip, model });
@@ -1477,9 +1515,9 @@ function addCameraStream(serial, accessCode, ip, model) {
   }
 
   const streamName = 'cam_' + serial;
-  const streamUrl = 'rtspx://bblp:' + accessCode + '@' + ip + ':322/streaming/live/1';
+  const streamUrl = 'rtspx://bblp:' + accessCode + '@' + ip + ':' + streamCfg.port + '/streaming/live/1';
 
-  sendLog('RTSP Stream konfiguriert: ' + streamName);
+  sendLog('RTSPS Stream konfiguriert: ' + streamName);
 
   // Stream zur Map hinzufügen
   cameraStreams.set(streamName, streamUrl);
@@ -1493,7 +1531,7 @@ function addCameraStream(serial, accessCode, ip, model) {
   // Stream direkt über Config-Restart hinzufügen (PUT API gibt 400 bei go2rtc v1.9+)
   if (go2rtcRestartTimer) clearTimeout(go2rtcRestartTimer);
   go2rtcRestartTimer = setTimeout(() => restartGo2rtcWithAllStreams(), 2000);
-  sendLog('RTSP Stream wird per Config-Restart hinzugefügt (in 2s)');
+  sendLog('RTSPS Stream wird per Config-Restart hinzugefügt (in 2s)');
 }
 
 // Stream per PUT API zu go2rtc hinzufügen - mit Retry (max 3 Versuche, 3s Delay)
