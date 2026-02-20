@@ -10,7 +10,7 @@ ueberall ueberwachen und steuern.
   VORAUSSETZUNGEN
 ------------------------------------------------------------
 
-- Windows 10 oder neuer (64-Bit)
+- Windows 10+, macOS 12+ oder Linux (64-Bit)
 - Bambu Lab Drucker im lokalen Netzwerk
 - Vafrum-Account mit API Key (erhalten Sie von Ihrem Admin)
 
@@ -18,12 +18,33 @@ ueberall ueberwachen und steuern.
   INSTALLATION
 ------------------------------------------------------------
 
-1. Starten Sie "VafrumCore-Setup-1.0.0.exe"
+--- WINDOWS ---
 
+1. Starten Sie "VafrumCore-Setup-*.exe"
 2. Folgen Sie dem Installationsassistenten
-   (Sie koennen den Installationsordner frei waehlen)
-
 3. Nach der Installation startet Vafrum Core automatisch
+
+--- macOS ---
+
+1. Entpacken Sie die ZIP-Datei
+2. Verschieben Sie "Vafrum Core.app" in den Programme-Ordner
+3. Beim ersten Oeffnen erscheint die Meldung:
+   "Vafrum Core nicht geoeffnet" -> Klicken Sie auf "Fertig"
+4. Oeffnen Sie: Systemeinstellungen -> Datenschutz & Sicherheit
+5. Dort steht "Vafrum Core wurde blockiert"
+   -> Klicken Sie auf "Dennoch oeffnen"
+6. Im naechsten Dialog nochmals "Dennoch oeffnen" bestaetigen
+7. Ab jetzt startet die App ganz normal
+
+   Hinweis: Die Software befindet sich in der Beta-Phase und
+   ist noch nicht mit einem Apple-Zertifikat signiert. Die
+   Sicherheitswarnung ist normal und unbedenklich.
+
+--- LINUX ---
+
+1. Entpacken Sie die ZIP-Datei
+2. Machen Sie die App ausfuehrbar: chmod +x VafrumCore
+3. Starten Sie mit: ./VafrumCore
 
 ------------------------------------------------------------
   EINRICHTUNG
