@@ -27,7 +27,9 @@ ueberall ueberwachen und steuern.
 --- macOS ---
 
 1. Entpacken Sie die ZIP-Datei
-2. Verschieben Sie "Vafrum Core.app" in den Programme-Ordner
+2. WICHTIG: Verschieben Sie "Vafrum Core.app" in den Programme-Ordner
+   (NICHT aus dem Downloads-Ordner starten! Sonst funktionieren
+   automatische Updates nicht.)
 3. Beim ersten Oeffnen erscheint die Meldung:
    "Vafrum Core nicht geoeffnet" -> Klicken Sie auf "Fertig"
 4. Oeffnen Sie: Systemeinstellungen -> Datenschutz & Sicherheit
