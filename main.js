@@ -1065,6 +1065,7 @@ if(src){
 
   // WebSocket-Proxy zu go2rtc (für stream.html → /api/ws?src=...)
   mjpegServer.on('upgrade', (req, socket, head) => {
+    sendLog('[ws-proxy] WebSocket Upgrade: ' + req.url);
     if (req.url.startsWith('/api/')) {
       const net = require('net');
       const proxy = net.connect({ port: 1984, host: '127.0.0.1' }, () => {
@@ -1077,30 +1078,11 @@ if(src){
         if (head.length > 0) proxy.write(head);
         socket.pipe(proxy).pipe(socket);
       });
-      proxy.on('error', () => socket.destroy());
+      proxy.on('error', (e) => { sendLog('[ws-proxy] Proxy-Fehler: ' + e.message); socket.destroy(); });
       socket.on('error', () => proxy.destroy());
     } else {
       socket.destroy();
     }
-  });
-
-  // WebSocket Proxy zu go2rtc (für video-stream Komponente)
-  mjpegServer.on('upgrade', (req, socket, head) => {
-    sendLog('[go2rtc-ws] WebSocket Upgrade: ' + req.url);
-    const proxySocket = net.connect(1984, '127.0.0.1', () => {
-      // HTTP Upgrade Request an go2rtc weiterleiten
-      let reqStr = req.method + ' ' + req.url + ' HTTP/1.1\r\n';
-      for (let i = 0; i < req.rawHeaders.length; i += 2) {
-        reqStr += req.rawHeaders[i] + ': ' + req.rawHeaders[i + 1] + '\r\n';
-      }
-      reqStr += '\r\n';
-      proxySocket.write(reqStr);
-      if (head.length > 0) proxySocket.write(head);
-      proxySocket.pipe(socket);
-      socket.pipe(proxySocket);
-    });
-    proxySocket.on('error', () => { socket.destroy(); });
-    socket.on('error', () => { proxySocket.destroy(); });
   });
 
   mjpegServer.on('error', (e) => {
@@ -1452,7 +1434,7 @@ function startTunnel() {
           apiSocket.emit('printer:status', {
             printerId: printer.id,
             serialNumber: serial,
-            cameraUrl: mjpegUrl
+            cameraUrl: camUrl
           });
         }
       });
