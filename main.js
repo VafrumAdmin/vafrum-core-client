@@ -1605,9 +1605,12 @@ app.whenReady().then(() => {
   });
 
   autoUpdater.on('error', (err) => {
-    sendLog('Update Fehler: ' + err.message);
-    downloadedVersion = null;
-    if (mainWindow) mainWindow.webContents.send('update-reset');
+    // ENOENT = app-update.yml fehlt (macOS App Translocation oder fehlende Datei) → still ignorieren
+    if (err.message && err.message.includes('ENOENT')) {
+      sendLog('Auto-Update nicht verfügbar (App nicht im Programme-Ordner?)');
+    } else {
+      sendLog('Update Fehler: ' + err.message);
+    }
   });
 
   // Nach 5 Sekunden nach Updates suchen

@@ -104,6 +104,20 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder --mac --publish never
 
+      - name: Add app-update.yml for auto-updater
+        run: |
+          cat > /tmp/app-update.yml << 'YAML'
+          provider: github
+          owner: VafrumAdmin
+          repo: vafrum-core-client
+          YAML
+          for dir in dist/mac dist/mac-arm64; do
+            if [ -d "$dir/Vafrum Core.app/Contents/Resources" ]; then
+              cp /tmp/app-update.yml "$dir/Vafrum Core.app/Contents/Resources/app-update.yml"
+              echo "app-update.yml added to $dir"
+            fi
+          done
+
       - name: Ad-hoc sign macOS apps
         run: |
           # x64 Build signieren
