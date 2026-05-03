@@ -173,6 +173,9 @@ jobs:
           echo "latest-mac.yml generiert:"
           cat latest-mac.yml
 
+      - name: Copy macOS installer script
+        run: cp install-macos.command dist/install-macos.command
+
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -180,6 +183,7 @@ jobs:
           path: |
             dist/VafrumCore-macOS-*.zip
             dist/latest-mac.yml
+            dist/install-macos.command
 
   # === Linux Build ===
   build-linux:
