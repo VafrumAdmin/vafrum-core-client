@@ -247,6 +247,45 @@ function connectToApi(apiKey) {
     executeCommand(data.serialNumber, data.command);
   });
 
+  // Server fragt nach aktueller Tunnel-URL (z.B. nach API-Neustart)
+  apiSocket.on('tunnel:request', () => {
+    sendLog('API fragt Tunnel-URL an');
+    if (config.tunnelUrl) {
+      sendLog('Sende aktuelle Tunnel-URL: ' + config.tunnelUrl);
+      printers.forEach((printer, serial) => {
+        const group = getStreamGroup(printer.model);
+        const camUrl = group === 1
+          ? config.tunnelUrl + '/stream/' + serial
+          : config.tunnelUrl + '/stream.html?src=cam_' + serial;
+        cameraUrls.set(serial, camUrl);
+        apiSocket.emit('printer:status', {
+          printerId: printer.id,
+          serialNumber: serial,
+          cameraUrl: camUrl
+        });
+      });
+    } else {
+      sendLog('Kein aktiver Tunnel – starte neuen...');
+      startTunnel();
+    }
+  });
+
+  // Server meldet toten Tunnel – Neustart erforderlich
+  apiSocket.on('tunnel:restart', (data) => {
+    sendLog('API meldet toten Tunnel: ' + (data?.deadHost || 'unbekannt') + ' – starte Neustart');
+    if (tunnelProcess) {
+      tunnelProcess.kill();
+      tunnelProcess = null;
+    }
+    if (tunnelRestartTimer) {
+      clearTimeout(tunnelRestartTimer);
+      tunnelRestartTimer = null;
+    }
+    tunnelRestartAttempts = 0;
+    config.tunnelUrl = null;
+    startTunnel();
+  });
+
   apiSocket.on('disconnect', () => {
     sendLog('API getrennt');
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('api-status', 'disconnected');
